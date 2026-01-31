@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.Audio;
 
+[RequireComponent(typeof(Rigidbody2D), typeof(BoxCollider2D))]
 public class GameVolumeControl : MonoBehaviour
 {
     [Header("Links")]
@@ -15,29 +16,42 @@ public class GameVolumeControl : MonoBehaviour
     public float gameThresholdY = -3f;
     public float handleVisualOffset = 0.0f; 
 
+    [Header("Collision Check")]
+    public LayerMask wallLayer;    // Set this to "Ground" or "Walls"
+    
+    // Internal State
     private bool isDragging = false;
     private bool isResizing = false;
-    
-    // VARIABLES FOR SMOOTH MOVEMENT
-    private Vector3 dragOffset;       // For moving the whole tool
-    private float initialMouseY;      // Where was mouse when we clicked resize?
-    private float initialHeight;      // How tall was bar when we clicked resize?
-    
-    private float currentHeight = 1.0f;
+    private Rigidbody2D rb;
     private BoxCollider2D barCollider; 
     private SpriteRenderer barSprite;
+
+    // Movement Variables
+    private Vector3 dragOffset;       
+    private Vector3 lastValidPosition; // Where we started dragging from
+    private float initialMouseY;       
+    private float initialHeight;       
+    private float currentHeight = 1.0f;
 
     void OnEnable()
     {
         isDragging = false;
         isResizing = false;
 
+        rb = GetComponent<Rigidbody2D>();
+        // Ensure Rigidbody is Kinematic so gravity/forces don't mess it up
+        if (rb != null)
+        {
+            rb.bodyType = RigidbodyType2D.Dynamic; 
+            rb.linearVelocity = Vector2.zero;
+            rb.angularVelocity = 0f;
+        }
+
         if (siblingBar != null)
         {
             if (barCollider == null) barCollider = siblingBar.GetComponent<BoxCollider2D>();
             barSprite = siblingBar.GetComponent<SpriteRenderer>();
 
-            // Init Height
             if (barSprite != null && barSprite.drawMode == SpriteDrawMode.Sliced)
                 currentHeight = barSprite.size.y;
             else
@@ -63,13 +77,14 @@ public class GameVolumeControl : MonoBehaviour
 
     void Update()
     {
+        // Lock Z Axis
         if (transform.position.z != 0) 
             transform.position = new Vector3(transform.position.x, transform.position.y, 0);
 
         Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         mousePos.z = 0;
 
-        // --- INPUT ---
+        // --- INPUT HANDLING ---
         if (Input.GetMouseButtonDown(0))
         {
             RaycastHit2D[] hits = Physics2D.RaycastAll(mousePos, Vector2.zero);
@@ -85,7 +100,6 @@ public class GameVolumeControl : MonoBehaviour
             if (foundHandle) 
             {
                 isResizing = true;
-                // SMOOTH FIX 1: Record the starting state
                 initialMouseY = mousePos.y;
                 initialHeight = currentHeight;
             }
@@ -93,25 +107,57 @@ public class GameVolumeControl : MonoBehaviour
             {
                 isDragging = true;
                 dragOffset = transform.position - mousePos;
+                
+                // 1. SAVE START POSITION
+                lastValidPosition = transform.position; 
             }
         }
 
         if (Input.GetMouseButtonUp(0))
         {
+            if (isDragging)
+            {
+                // 2. CHECK WALL COLLISION ON DROP
+                if (barCollider != null && barCollider.IsTouchingLayers(wallLayer))
+                {
+                    // BAD DROP: Inside a wall -> Snap Back
+                    Debug.Log("🚫 Inside Wall! Snapping back.");
+                    transform.position = lastValidPosition; 
+                }
+                else
+                {
+                    // GOOD DROP: Check for Inventory Switch
+                    if (transform.position.y < gameThresholdY) 
+                    {
+                        SwapToInventoryMode();
+                    }
+                    // If good drop but not inventory, we just stay here.
+                }
+            }
+
             isDragging = false;
             isResizing = false;
-            if (transform.position.y < gameThresholdY) SwapToInventoryMode();
         }
 
         // --- EXECUTION ---
         if (isDragging)
         {
-            transform.position = mousePos + dragOffset;
+            // MOVEMENT: Follow mouse directly (No physics forces)
+            // We use MovePosition in Update for instant response, 
+            // since we are Kinematic it won't jitter.
+            if (rb != null)
+            {
+                rb.MovePosition(mousePos + dragOffset);
+            }
+            else
+            {
+                transform.position = mousePos + dragOffset;
+            }
+            
             UpdateVisuals(currentHeight);
         }
         else if (isResizing)
         {
-            // SMOOTH FIX 2: Calculate Delta (Movement) instead of Absolute Position
             float mouseDelta = mousePos.y - initialMouseY;
             float newH = initialHeight + mouseDelta;
 
@@ -121,11 +167,13 @@ public class GameVolumeControl : MonoBehaviour
         }
     }
 
+    // --- HELPERS ---
+
     void UpdateVisuals(float h)
     {
         if (siblingBar == null || siblingHandle == null) return;
 
-        // 1. Scale / Size
+        // Scale
         if (barSprite != null && barSprite.drawMode == SpriteDrawMode.Sliced)
         {
             barSprite.size = new Vector2(barSprite.size.x, h);
@@ -138,7 +186,7 @@ public class GameVolumeControl : MonoBehaviour
 
         Physics2D.SyncTransforms(); 
 
-        // 2. Position Handle
+        // Handle Position
         float topY = 0f;
         if(barCollider != null) topY = barCollider.bounds.max.y;
         else topY = siblingBar.position.y + h; 
@@ -162,8 +210,6 @@ public class GameVolumeControl : MonoBehaviour
             inventoryBarObject.GetComponent<InventoryVolumeControl>().SyncState(currentHeight);
             inventoryBarObject.SetActive(true);
             gameObject.SetActive(false);
-            
-
         }
     }
 }
