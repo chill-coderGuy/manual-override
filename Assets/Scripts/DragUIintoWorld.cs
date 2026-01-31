@@ -1,73 +1,138 @@
 using UnityEngine;
 
-public class UniversalLogicLeak : MonoBehaviour
+[RequireComponent(typeof(Rigidbody2D))]
+public class RushEnemy : MonoBehaviour
 {
-    [Header("State Detection")]
-    public float interfaceYThreshold = -5f; // Boundary between Menu and Game World
-    public bool isInGame = false;
+    [Header("Movement Stats")]
+    public float patrolSpeed = 2f;
+    public float chaseSpeed = 6f; 
+    public float detectionRange = 5f;
 
-    [Header("Internal Interaction")]
-    public Transform internalHandle; // e.g., the Triangle or the Cog center
+    [Header("Combat Stats")]
+    public float damage = 10f;
+    
+    // --- SEPARATE KNOCKBACK VARIABLES ---
+    [Tooltip("How hard the PLAYER gets pushed away.")]
+    public float knockbackForceOnPlayer = 20f; // High value so you feel the hit
+    
+    [Tooltip("How hard THIS ENEMY bounces back.")]
+    public float knockbackForceOnSelf = 8f;    // Lower value for a slight recoil
+    
+    [Tooltip("How long the enemy stops moving after hitting (Stun).")]
+    public float impactStunDuration = 0.5f; 
 
-    private bool isDraggingObject = false;
-    private bool isInteractingInternal = false;
-    private Vector3 dragOffset;
+    [Header("Patrol Settings")]
+    public Transform[] patrolPoints;
+    public float waypointTolerance = 0.5f; 
+
+    [Header("Visuals")]
+    public SpriteRenderer spriteRenderer;
+    public Color patrolColor = Color.white;
+    public Color aggroColor = Color.red;
+
+    private Transform playerTransform;
+    private Rigidbody2D rb;
+    private int currentWaypointIndex = 0;
+    private bool isAggro = false;
+    private float stunTimer = 0f;
+
+    void Start()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        GameObject p = GameObject.FindGameObjectWithTag("Player");
+        if (p != null) playerTransform = p.transform;
+
+        if (spriteRenderer != null) spriteRenderer.color = patrolColor;
+    }
 
     void Update()
     {
-        Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        mousePos.z = 0;
-
-        // 1. STATE CHECK: Detect if the object has been "Leaked" into the game
-        isInGame = transform.position.y > interfaceYThreshold;
-
-        // 2. INPUT HANDLING
-        HandleMouseInput(mousePos);
-
-        // 3. EXECUTION
-        if (isDraggingObject)
+        if (stunTimer > 0)
         {
-            transform.position = mousePos + dragOffset;
+            stunTimer -= Time.deltaTime;
+            return; 
         }
+
+        if (playerTransform == null) return;
+
+        float distToPlayer = Vector2.Distance(transform.position, playerTransform.position);
+        bool wasAggro = isAggro;
+        isAggro = (distToPlayer < detectionRange);
+
+        if (isAggro != wasAggro && spriteRenderer != null)
+        {
+            spriteRenderer.color = isAggro ? aggroColor : patrolColor;
+        }
+    }
+
+    void FixedUpdate()
+    {
+        // DO NOT move if stunned. This allows the knockback physics to work.
+        if (stunTimer > 0) return;
+
+        if (isAggro && playerTransform != null)
+        {
+            ChasePlayer();
+        }
+        else
+        {
+            Patrol();
+        }
+    }
+
+    void ChasePlayer()
+    {
+        float directionX = Mathf.Sign(playerTransform.position.x - transform.position.x);
+        rb.linearVelocity = new Vector2(directionX * chaseSpeed, rb.linearVelocity.y);
+    }
+
+    void Patrol()
+    {
+        if (patrolPoints.Length == 0) 
+        {
+            rb.linearVelocity = new Vector2(0, rb.linearVelocity.y);
+            return;
+        }
+
+        Transform targetPoint = patrolPoints[currentWaypointIndex];
+        float directionX = Mathf.Sign(targetPoint.position.x - transform.position.x);
         
-        // This is where you would hook in your specific mechanics (Volume, Gravity, etc.)
-        if (isInteractingInternal)
+        rb.linearVelocity = new Vector2(directionX * patrolSpeed, rb.linearVelocity.y);
+
+        if (Mathf.Abs(transform.position.x - targetPoint.position.x) < waypointTolerance)
         {
-            ProcessInternalLogic(mousePos);
+            currentWaypointIndex = (currentWaypointIndex + 1) % patrolPoints.Length;
         }
     }
 
-    private void HandleMouseInput(Vector3 mousePos)
+    void OnCollision2D(Collision2D collision)
     {
-        // LEFT CLICK: Drag the whole physical object
-        if (Input.GetMouseButtonDown(0))
+        if (collision.gameObject.CompareTag("Player"))
         {
-            RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
-            if (hit.collider != null && hit.collider.gameObject == gameObject)
-            {
-                isDraggingObject = true;
-                dragOffset = transform.position - mousePos;
-            }
-        }
-        if (Input.GetMouseButtonUp(0)) isDraggingObject = false;
+            // 1. Deal Damage
+            HealthSystem playerHealth = collision.gameObject.GetComponent<HealthSystem>();
+            if (playerHealth != null) playerHealth.TakeDamage(damage);
 
-        // RIGHT CLICK: Interact with the UI "Handle" inside the object
-        if (Input.GetMouseButtonDown(1))
-        {
-            RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
-            if (hit.collider != null && hit.collider.transform == internalHandle)
+            // 2. CALCULATE FORCE DIRECTION
+            // Vector pointing FROM Enemy TO Player
+            Vector2 pushDirection = (collision.transform.position - transform.position).normalized;
+            
+            // 3. KNOCKBACK PLAYER (Force A)
+            Rigidbody2D playerRb = collision.gameObject.GetComponent<Rigidbody2D>();
+            if (playerRb != null)
             {
-                isInteractingInternal = true;
+                // Reset velocity to zero first so the knockback is consistent
+                playerRb.linearVelocity = Vector2.zero; 
+                playerRb.AddForce(pushDirection * knockbackForceOnPlayer, ForceMode2D.Impulse);
             }
-        }
-        if (Input.GetMouseButtonUp(1)) isInteractingInternal = false;
-    }
 
-    private void ProcessInternalLogic(Vector3 mousePos)
-    {
-        // Move the internal handle relative to the parent object
-        // This keeps the interaction "local" to the tool itself
-        float localY = transform.InverseTransformPoint(mousePos).y;
-        internalHandle.localPosition = new Vector3(0, localY, 0);
+            // 4. KNOCKBACK SELF (Force B)
+            // Reverse direction (-pushDirection)
+            rb.linearVelocity = Vector2.zero; 
+            rb.AddForce(-pushDirection * knockbackForceOnSelf, ForceMode2D.Impulse);
+
+            // 5. STUN SELF
+            stunTimer = impactStunDuration;
+        }
     }
 }

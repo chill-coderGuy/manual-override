@@ -17,10 +17,15 @@ public class GameVolumeControl : MonoBehaviour
 
     private bool isDragging = false;
     private bool isResizing = false;
-    private Vector3 dragOffset;
+    
+    // VARIABLES FOR SMOOTH MOVEMENT
+    private Vector3 dragOffset;       // For moving the whole tool
+    private float initialMouseY;      // Where was mouse when we clicked resize?
+    private float initialHeight;      // How tall was bar when we clicked resize?
+    
     private float currentHeight = 1.0f;
     private BoxCollider2D barCollider; 
-    private SpriteRenderer barSprite; // To check for Sliced mode
+    private SpriteRenderer barSprite;
 
     void OnEnable()
     {
@@ -32,8 +37,7 @@ public class GameVolumeControl : MonoBehaviour
             if (barCollider == null) barCollider = siblingBar.GetComponent<BoxCollider2D>();
             barSprite = siblingBar.GetComponent<SpriteRenderer>();
 
-            // INITIALIZE HEIGHT
-            // If using Sliced Sprite, read 'size.y'. If simple scale, read 'localScale.y'
+            // Init Height
             if (barSprite != null && barSprite.drawMode == SpriteDrawMode.Sliced)
                 currentHeight = barSprite.size.y;
             else
@@ -65,6 +69,7 @@ public class GameVolumeControl : MonoBehaviour
         Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         mousePos.z = 0;
 
+        // --- INPUT ---
         if (Input.GetMouseButtonDown(0))
         {
             RaycastHit2D[] hits = Physics2D.RaycastAll(mousePos, Vector2.zero);
@@ -77,7 +82,13 @@ public class GameVolumeControl : MonoBehaviour
                 if (hit.collider.transform == siblingBar || hit.collider.gameObject == gameObject) foundBar = true;
             }
 
-            if (foundHandle) isResizing = true;
+            if (foundHandle) 
+            {
+                isResizing = true;
+                // SMOOTH FIX 1: Record the starting state
+                initialMouseY = mousePos.y;
+                initialHeight = currentHeight;
+            }
             else if (foundBar)
             {
                 isDragging = true;
@@ -92,6 +103,7 @@ public class GameVolumeControl : MonoBehaviour
             if (transform.position.y < gameThresholdY) SwapToInventoryMode();
         }
 
+        // --- EXECUTION ---
         if (isDragging)
         {
             transform.position = mousePos + dragOffset;
@@ -99,15 +111,9 @@ public class GameVolumeControl : MonoBehaviour
         }
         else if (isResizing)
         {
-            float newH = 0f;
-            
-            // MATH FIX:
-            // Sliced Sprites usually pivot from Center. Simple Sprites pivot from Bottom.
-            // We use the Collider Bounds to be safe.
-            if (barCollider != null)
-                newH = mousePos.y - barCollider.bounds.min.y;
-            else
-                newH = mousePos.y - siblingBar.position.y;
+            // SMOOTH FIX 2: Calculate Delta (Movement) instead of Absolute Position
+            float mouseDelta = mousePos.y - initialMouseY;
+            float newH = initialHeight + mouseDelta;
 
             currentHeight = Mathf.Clamp(newH, minHeight, maxHeight);
             UpdateVisuals(currentHeight);
@@ -119,27 +125,23 @@ public class GameVolumeControl : MonoBehaviour
     {
         if (siblingBar == null || siblingHandle == null) return;
 
-        // 1. APPLY HEIGHT
+        // 1. Scale / Size
         if (barSprite != null && barSprite.drawMode == SpriteDrawMode.Sliced)
         {
-            // SLICED MODE: Change 'size', keep scale 1
-            // This prevents "Capsule Distortion"
             barSprite.size = new Vector2(barSprite.size.x, h);
             siblingBar.localScale = Vector3.one; 
         }
         else
         {
-            // NORMAL MODE: Scale Y only
-            // Ensure X and Z stay 1 to prevent squashing
             siblingBar.localScale = new Vector3(0.33f, h, 1f);
         }
 
         Physics2D.SyncTransforms(); 
 
-        // 2. POSITION HANDLE
+        // 2. Position Handle
         float topY = 0f;
         if(barCollider != null) topY = barCollider.bounds.max.y;
-        else topY = siblingBar.position.y + h; // Fallback
+        else topY = siblingBar.position.y + h; 
 
         siblingHandle.position = new Vector3(siblingBar.position.x, topY + handleVisualOffset, 0);
     }
@@ -160,6 +162,8 @@ public class GameVolumeControl : MonoBehaviour
             inventoryBarObject.GetComponent<InventoryVolumeControl>().SyncState(currentHeight);
             inventoryBarObject.SetActive(true);
             gameObject.SetActive(false);
+            
+
         }
     }
 }

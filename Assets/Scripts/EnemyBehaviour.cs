@@ -1,0 +1,133 @@
+using UnityEngine;
+
+
+[RequireComponent(typeof(Rigidbody2D))]
+public class RusherEnemy : MonoBehaviour
+{
+    [Header("Movement Stats")]
+    public float patrolSpeed = 2f;
+    public float chaseSpeed = 6f; 
+    public float detectionRange = 5f;
+
+    [Header("Combat Stats")]
+    public float damage = 10f;
+    public float knockbackForceOnPlayer = 20f; 
+    public float knockbackForceOnSelf = 8f;   
+    public float impactStunDuration = 0.5f; 
+
+    [Header("Patrol Settings")]
+    public Transform[] patrolPoints;
+    public float waypointTolerance = 0.5f; 
+
+    [Header("Visuals")]
+    public SpriteRenderer spriteRenderer;
+    public Color patrolColor = Color.white;
+    public Color aggroColor = Color.red;
+
+    private Transform playerTransform;
+    private Rigidbody2D rb;
+    private int currentWaypointIndex = 0;
+    private bool isAggro = false;
+    private float stunTimer = 0f;
+
+    void Start()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        GameObject p = GameObject.FindGameObjectWithTag("Player");
+        if (p != null) playerTransform = p.transform;
+
+        if (spriteRenderer != null) spriteRenderer.color = patrolColor;
+    }
+
+    void Update()
+    {
+        if (stunTimer > 0)
+        {
+            stunTimer -= Time.deltaTime;
+            return; 
+        }
+
+        if (playerTransform == null) return;
+
+        float distToPlayer = Vector2.Distance(transform.position, playerTransform.position);
+        bool wasAggro = isAggro;
+        isAggro = (distToPlayer < detectionRange);
+
+        if (isAggro != wasAggro && spriteRenderer != null)
+        {
+            spriteRenderer.color = isAggro ? aggroColor : patrolColor;
+        }
+    }
+
+    void FixedUpdate()
+    {
+        if (stunTimer > 0) return;
+
+        if (isAggro && playerTransform != null)
+        {
+            float directionX = Mathf.Sign(playerTransform.position.x - transform.position.x);
+            rb.linearVelocity = new Vector2(directionX * chaseSpeed, rb.linearVelocity.y);
+        }
+        else
+        {
+            // Patrol Logic
+            if (patrolPoints.Length == 0) 
+            {
+                rb.linearVelocity = new Vector2(0, rb.linearVelocity.y);
+                return;
+            }
+
+            Transform targetPoint = patrolPoints[currentWaypointIndex];
+            float directionX = Mathf.Sign(targetPoint.position.x - transform.position.x);
+            
+            rb.linearVelocity = new Vector2(directionX * patrolSpeed, rb.linearVelocity.y);
+
+            if (Mathf.Abs(transform.position.x - targetPoint.position.x) < waypointTolerance)
+            {
+                currentWaypointIndex = (currentWaypointIndex + 1) % patrolPoints.Length;
+            }
+        }
+    }
+
+    void OnCollisionEnter2D(Collision2D collision)
+    {
+        if (collision.gameObject.CompareTag("Player"))
+        {
+            // 1. Deal Damage
+            HealthSystem playerHealth = collision.gameObject.GetComponent<HealthSystem>();
+            if (playerHealth != null) playerHealth.TakeDamage(damage);
+
+            // 2. Calculate Direction
+            Vector2 pushDir = (collision.transform.position - transform.position).normalized;
+
+            // --- 3. APPLY KNOCKBACK TO PLAYER (The Fix) ---
+            KnockbackReceiver receiver = collision.gameObject.GetComponent<KnockbackReceiver>();
+            if (receiver != null)
+            {
+                // Use the Receiver script to handle disabling inputs
+                receiver.ApplyKnockback(pushDir * knockbackForceOnPlayer);
+            }
+            else
+            {
+                // Fallback (If you forgot to add the script)
+                Rigidbody2D playerRb = collision.gameObject.GetComponent<Rigidbody2D>();
+                if (playerRb != null)
+                {
+                    playerRb.linearVelocity = Vector2.zero;
+                    playerRb.AddForce(pushDir * knockbackForceOnPlayer, ForceMode2D.Impulse);
+                }
+            }
+
+            // 4. Knockback Self & Stun
+            rb.linearVelocity = Vector2.zero; 
+            rb.AddForce(-pushDir * knockbackForceOnSelf, ForceMode2D.Impulse);
+            stunTimer = impactStunDuration;
+        }
+    }
+    
+    void OnDrawGizmos()
+    {
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, detectionRange);
+    }
+}
