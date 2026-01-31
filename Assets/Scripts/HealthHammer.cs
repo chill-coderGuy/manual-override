@@ -5,6 +5,7 @@ using System.Collections.Generic;
 public class HealthHammer : MonoBehaviour
 {
     [Header("References")]
+    public Collider2D[] dragColliders; // Drag Head and Handle here
     public HealthSystem playerHealth; 
     public Transform handleTransform; 
     public Transform headTransform;   
@@ -64,19 +65,49 @@ public class HealthHammer : MonoBehaviour
             newScale.x = 0.2f; newScale.z = 1f;
             handleTransform.localScale = newScale;
 
-            // Head Position (Force Scale 1 to prevent distortion)
+            // Head Position
             float currentHeadY = Mathf.Lerp(headHeightAtMin, headHeightAtMax, healthPercent);
             headTransform.localPosition = new Vector3(0, currentHeadY, 0);
             headTransform.localScale = Vector3.one; 
         }
 
-        // 3. INPUT
-        if (Input.GetMouseButtonDown(0) && !isSwinging)
+        // 3. MERGED INPUT LOGIC
+        if (Input.GetMouseButtonDown(0))
         {
-            Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            float dirX = mousePos.x - transform.position.x;
-            StartCoroutine(Smash(dirX > 0 ? -90f : 90f));
+            // A. SAFETY CHECK: Is the mouse touching the hammer?
+            if (IsMouseOverHammer()) 
+            {
+                // YES -> We are trying to Drag. Do NOT swing.
+                return; 
+            }
+
+            // B. ATTACK LOGIC (Only runs if we are NOT dragging)
+            if (!isSwinging)
+            {
+                Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+                // Calculate direction (Left or Right?)
+                float dirX = mousePos.x - transform.position.x;
+                // Call the correct function: SMASH (not Swing)
+                StartCoroutine(Smash(dirX > 0 ? -90f : 90f));
+            }
         }
+    }
+
+    // --- HELPER TO CHECK MOUSE OVER ---
+    bool IsMouseOverHammer()
+    {
+        if (dragColliders == null || dragColliders.Length == 0) return false;
+
+        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        
+        foreach (Collider2D col in dragColliders)
+        {
+            if (col != null && col.OverlapPoint(mousePos))
+            {
+                return true; // Mouse is touching a hammer part!
+            }
+        }
+        return false;
     }
 
     IEnumerator Smash(float targetAngle)
@@ -129,13 +160,11 @@ public class HealthHammer : MonoBehaviour
     void TriggerShockwave()
     {
         Collider2D[] hits = Physics2D.OverlapCircleAll(headTransform.position, shockwaveRadius, enemyLayer);
-        Debug.Log($"💥 Shockwave Hits: {hits.Length}");
-
+        
         foreach (Collider2D hit in hits)
         {
             if (hit != null && hit.CompareTag("Enemy"))
             {
-                // --- THE FIX: SEARCH PARENTS FOR HEALTH ---
                 HealthSystem eHealth = hit.GetComponent<HealthSystem>();
                 if (eHealth == null) eHealth = hit.GetComponentInParent<HealthSystem>();
 
@@ -143,12 +172,7 @@ public class HealthHammer : MonoBehaviour
                 {
                     eHealth.TakeDamage(shockwaveDamage);
                 }
-                else
-                {
-                    Debug.LogWarning($"⚠️ Hit enemy '{hit.name}' but could NOT find HealthSystem script!");
-                }
 
-                // Knockback
                 Rigidbody2D eRb = hit.GetComponent<Rigidbody2D>();
                 if (eRb == null) eRb = hit.GetComponentInParent<Rigidbody2D>();
                 
@@ -162,7 +186,6 @@ public class HealthHammer : MonoBehaviour
         }
     }
 
-    // Direct Hit Logic (Also needs the Parent fix)
     public void HandleCollision(Collider2D collision)
     {
         if (collision.CompareTag("Enemy") && !hitEnemies.Contains(collision.gameObject))
