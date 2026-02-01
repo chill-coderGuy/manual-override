@@ -5,24 +5,20 @@ public class HammerSystemManager : MonoBehaviour
 {
     [Header("References")]
     public Transform playerTransform;
-    public GameObject uiHammerObject;    // The 'HeathUI' Group
+    public GameObject uiHammerObject;   
     public GameObject worldHammerPivot;  
     public HealthHammer worldScript;     
 
     [Header("Inventory Settings")]
-    public RectTransform inventoryAnchor; // Drag 'InventoryBox' here
-    public float snapDistance = 100f;     // Range to snap back to box
-
+    public RectTransform inventoryAnchor; 
+     public float snapDistance = 100f;     
     [Header("Equip Settings")]
-    public float equipRange = 2.0f;       // Range to equip to player
+    public float equipRange = 2.0f;       
 
     void Start()
     {
-        EquipToUI(); // Start in bag
+        EquipToUI(); 
     }
-
-    // --- STATE SWITCHING ---
-
     public void EquipToWorld()
     {
         uiHammerObject.SetActive(false);
@@ -34,17 +30,11 @@ public class HammerSystemManager : MonoBehaviour
     {
         uiHammerObject.SetActive(true);
         worldHammerPivot.SetActive(false);
-        
-        // SNAP TO HOME
         if (uiHammerObject != null)
         {
             uiHammerObject.transform.localPosition = Vector3.zero;
         }
     }
-
-    // --- DISTANCE CHECKS ---
-
-    // 1. Check if Mouse is near Player (For Equipping)
     public bool IsMouseNearPlayer()
     {
         if (playerTransform == null) return false;
@@ -54,23 +44,9 @@ public class HammerSystemManager : MonoBehaviour
 
         return Vector2.Distance(mouseWorldPos, playerTransform.position) <= equipRange;
     }
-
-    // 2. Check if Mouse is near Inventory Box (For Returning)
     public bool IsMouseNearInventory()
     {
         if (inventoryAnchor == null) return false;
-        
-        // UI uses Screen Space, so we compare mouse position directly
         return Vector2.Distance(Input.mousePosition, inventoryAnchor.position) < snapDistance;
-    }
-
-    // Visual Debugging
-    void OnDrawGizmos()
-    {
-        if (playerTransform != null)
-        {
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireSphere(playerTransform.position, equipRange);
-        }
     }
 }

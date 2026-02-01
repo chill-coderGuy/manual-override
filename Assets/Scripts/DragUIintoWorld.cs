@@ -10,13 +10,12 @@ public class RushEnemy : MonoBehaviour
 
     [Header("Combat Stats")]
     public float damage = 10f;
-    
-    // --- SEPARATE KNOCKBACK VARIABLES ---
+   
     [Tooltip("How hard the PLAYER gets pushed away.")]
-    public float knockbackForceOnPlayer = 20f; // High value so you feel the hit
+    public float knockbackForceOnPlayer = 20f; 
     
     [Tooltip("How hard THIS ENEMY bounces back.")]
-    public float knockbackForceOnSelf = 8f;    // Lower value for a slight recoil
+    public float knockbackForceOnSelf = 8f;   
     
     [Tooltip("How long the enemy stops moving after hitting (Stun).")]
     public float impactStunDuration = 0.5f; 
@@ -67,7 +66,6 @@ public class RushEnemy : MonoBehaviour
 
     void FixedUpdate()
     {
-        // DO NOT move if stunned. This allows the knockback physics to work.
         if (stunTimer > 0) return;
 
         if (isAggro && playerTransform != null)
@@ -109,29 +107,17 @@ public class RushEnemy : MonoBehaviour
     {
         if (collision.gameObject.CompareTag("Player"))
         {
-            // 1. Deal Damage
             HealthSystem playerHealth = collision.gameObject.GetComponent<HealthSystem>();
             if (playerHealth != null) playerHealth.TakeDamage(damage);
-
-            // 2. CALCULATE FORCE DIRECTION
-            // Vector pointing FROM Enemy TO Player
             Vector2 pushDirection = (collision.transform.position - transform.position).normalized;
-            
-            // 3. KNOCKBACK PLAYER (Force A)
             Rigidbody2D playerRb = collision.gameObject.GetComponent<Rigidbody2D>();
             if (playerRb != null)
             {
-                // Reset velocity to zero first so the knockback is consistent
                 playerRb.linearVelocity = Vector2.zero; 
                 playerRb.AddForce(pushDirection * knockbackForceOnPlayer, ForceMode2D.Impulse);
             }
-
-            // 4. KNOCKBACK SELF (Force B)
-            // Reverse direction (-pushDirection)
             rb.linearVelocity = Vector2.zero; 
             rb.AddForce(-pushDirection * knockbackForceOnSelf, ForceMode2D.Impulse);
-
-            // 5. STUN SELF
             stunTimer = impactStunDuration;
         }
     }

@@ -21,15 +21,4 @@ public class HammerTrigger : MonoBehaviour
             parentScript.HandleCollision(collision);
         }
     }
-
-    // Optional: Keep collider enabled to show in Scene view
-    void OnDrawGizmos()
-    {
-        Collider2D col = GetComponent<Collider2D>();
-        if (col != null)
-        {
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(transform.position, 0.5f);
-        }
-    }
 }

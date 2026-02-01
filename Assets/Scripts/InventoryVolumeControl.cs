@@ -13,7 +13,7 @@ public class InventoryVolumeControl : MonoBehaviour
     public float minHeight = 0.5f;
     public float maxHeight = 5.0f;
     public float sensitivity = 0.2f; 
-    public float gameThresholdY = -3f;
+    public float gameThresholdY = 3.0f; 
     public float handleVisualOffset = 0.0f; 
 
     private bool isDragging = false;
@@ -21,36 +21,26 @@ public class InventoryVolumeControl : MonoBehaviour
     private Vector3 dragOffset;
     private float currentHeight = 1.0f;
     private BoxCollider2D barCollider; 
+    private Vector3 initialUiPosition;
 
-    // --- FORCE RESET ON WAKE UP ---
-    // Replaces Start() to ensure it works every time you swap back
+    void Awake()
+    {
+       
+        initialUiPosition = transform.position;
+    }
+
     void OnEnable()
     {
-        // 1. Reset Interaction Flags (Fixes "Second Freeze")
         isDragging = false;
         isResizing = false;
+        transform.position = initialUiPosition;
 
-        // 2. Sync Math to Actual Visuals (Fixes "The Pop")
         if (siblingBar != null)
         {
-            // Get the collider if we haven't already
             if (barCollider == null) barCollider = siblingBar.GetComponent<BoxCollider2D>();
-            
-            // Read the ACTUAL height so we don't snap back to 1.0
             currentHeight = siblingBar.localScale.y;
-            
-            // Force Bar Collider On
-            if (barCollider != null) barCollider.enabled = true;
         }
 
-        // 3. Force Handle Collider On
-        if (siblingHandle != null)
-        {
-            var col = siblingHandle.GetComponent<Collider2D>();
-            if (col != null) col.enabled = true;
-        }
-
-        // 4. Update Position Immediately
         UpdateVisuals(currentHeight);
     }
 
@@ -62,29 +52,16 @@ public class InventoryVolumeControl : MonoBehaviour
 
     void Update()
     {
-        // FIX 1: Lock Z to 0 so the object never drifts away from the Raycast
-        if (transform.position.z != 0)
-        {
-            transform.position = new Vector3(transform.position.x, transform.position.y, 0);
-        }
-
         Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         mousePos.z = 0;
 
-        // --- INPUTS ---
-        // RIGHT CLICK: Dial Volume (Handle Only)
-        if (Input.GetMouseButtonDown(1))
+        if (Input.GetMouseButtonDown(1)) 
         {
             RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
-            if (hit.collider != null && hit.collider.transform == siblingHandle)
-            {
-                isResizing = true;
-            }
+            if (hit.collider != null && hit.collider.transform == siblingHandle) isResizing = true;
         }
-        if (Input.GetMouseButtonUp(1)) isResizing = false;
 
-        // LEFT CLICK: Drag Tool (Handle Only)
-        if (Input.GetMouseButtonDown(0))
+        if (Input.GetMouseButtonDown(0)) 
         {
             RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
             if (hit.collider != null && hit.collider.transform == siblingHandle)
@@ -93,26 +70,30 @@ public class InventoryVolumeControl : MonoBehaviour
                 dragOffset = transform.position - mousePos;
             }
         }
-        if (Input.GetMouseButtonUp(0))
+        if (Input.GetMouseButtonUp(0)) isDragging = false;
+        if (Input.GetMouseButtonUp(1)) isResizing = false;
+        if (!isDragging && !isResizing)
         {
-            isDragging = false;
-            if (transform.position.y > gameThresholdY) SwapToGameMode();
+            if (transform.position.y > gameThresholdY)
+            {
+                SwapToGameMode();
+            }
+            else if (transform.position != initialUiPosition)
+            {
+                transform.position = initialUiPosition;
+                UpdateVisuals(currentHeight);
+            }
         }
-
-        // --- EXECUTION ---
         if (isResizing)
         {
             float delta = Input.GetAxis("Mouse Y") * sensitivity;
-            currentHeight += delta;
-            currentHeight = Mathf.Clamp(currentHeight, minHeight, maxHeight);
-            
+            currentHeight = Mathf.Clamp(currentHeight + delta, minHeight, maxHeight);
             UpdateVisuals(currentHeight);
             ApplyAudio(currentHeight);
         }
         else if (isDragging)
         {
             transform.position = mousePos + dragOffset;
-            // FIX: Ensure visuals stay synced while dragging to avoid jitter
             UpdateVisuals(currentHeight); 
         }
     }
@@ -121,42 +102,25 @@ public class InventoryVolumeControl : MonoBehaviour
     {
         if (siblingBar == null || siblingHandle == null) return;
 
-        // 1. Scale the Bar
         siblingBar.localScale = new Vector3(siblingBar.localScale.x, h, 1);
+        Physics2D.SyncTransforms(); 
 
-        // 2. Find the TRUE top of the bar using Physics Bounds
-        float topY = 0f;
-        
-        if (barCollider != null)
-        {
-            // Forces the physics system to update the bounds immediately after scaling
-            Physics2D.SyncTransforms(); 
-            topY = barCollider.bounds.max.y;
-        }
-        else
-        {
-            // Fallback if collider is missing
-            topY = siblingBar.position.y + (h / 2); 
-        }
-
-        // 3. Move Handle
+        float topY = (barCollider != null) ? barCollider.bounds.max.y : siblingBar.position.y + (h / 2);
         siblingHandle.position = new Vector3(siblingBar.position.x, topY + handleVisualOffset, 0);
     }
 
-    void ApplyAudio(float h)
+   void ApplyAudio(float h)
+{
+    if (GlobalSoundManager.Instance != null)
     {
-        if (masterMixer == null) return;
-        float t = Mathf.InverseLerp(minHeight, maxHeight, h);
-        masterMixer.SetFloat("MusicVol", Mathf.Lerp(-40f, 0f, t));
-        masterMixer.SetFloat("MusicPitch", Mathf.Lerp(0.7f, 1.0f, t));
+        GlobalSoundManager.Instance.SetVolumeFromLength(h, minHeight, maxHeight);
     }
-
+}
     void SwapToGameMode()
     {
         if(gameBarObject != null)
         {
              gameBarObject.transform.position = transform.position;
-             // Ensure this name matches your Game script filename!
              gameBarObject.GetComponent<GameVolumeControl>().SyncState(currentHeight);
              gameBarObject.SetActive(true);
              gameObject.SetActive(false);

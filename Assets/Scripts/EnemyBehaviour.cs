@@ -37,24 +37,16 @@ public class RusherEnemy : MonoBehaviour
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
-        
-        // 1. Lock Y Axis & Remove Gravity
         rb.gravityScale = 0f; 
         rb.constraints = RigidbodyConstraints2D.FreezePositionY | RigidbodyConstraints2D.FreezeRotation;
         
-        // --- IMPROVED: AUTO-FIND SPRITE RENDERER ---
         if (spriteRenderer == null) 
         {
-            // First try to find on this object
             spriteRenderer = GetComponent<SpriteRenderer>();
-            
-            // If not found, try children
             if (spriteRenderer == null)
             {
                 spriteRenderer = GetComponentInChildren<SpriteRenderer>();
             }
-            
-            // Debug to see if we found it
             if (spriteRenderer != null)
             {
                 Debug.Log($"[{gameObject.name}] Found SpriteRenderer on: {spriteRenderer.gameObject.name}");
@@ -64,8 +56,6 @@ public class RusherEnemy : MonoBehaviour
                 Debug.LogWarning($"[{gameObject.name}] No SpriteRenderer found! Color changes won't work.");
             }
         }
-        // --------------------------------------
-
         GameObject p = GameObject.FindGameObjectWithTag("Player");
         if (p != null) 
         {
@@ -76,8 +66,6 @@ public class RusherEnemy : MonoBehaviour
         {
             Debug.LogWarning($"[{gameObject.name}] Player not found! Make sure player has 'Player' tag.");
         }
-
-        // Set initial color
         if (spriteRenderer != null) 
         {
             spriteRenderer.color = patrolColor;
@@ -94,15 +82,12 @@ public class RusherEnemy : MonoBehaviour
         }
 
         if (playerTransform == null) return;
-
-        // 2. Vertical Range Check (AI Fix)
         float distToPlayer = Vector2.Distance(transform.position, playerTransform.position);
         float yDiff = Mathf.Abs(playerTransform.position.y - transform.position.y);
 
         bool wasAggro = isAggro;
         isAggro = (distToPlayer < detectionRange && yDiff < verticalDetectionRange);
 
-        // Update color when aggro state changes
         if (isAggro != wasAggro)
         {
             if (spriteRenderer != null)
@@ -127,8 +112,6 @@ public class RusherEnemy : MonoBehaviour
 
         float currentSpeed = 0f;
         float targetX = transform.position.x;
-
-        // 3. AI Movement Logic
         if (isAggro && playerTransform != null)
         {
             targetX = playerTransform.position.x;
@@ -142,8 +125,6 @@ public class RusherEnemy : MonoBehaviour
                 currentSpeed = patrolSpeed;
             }
         }
-
-        // Clamp Target (Edge Detection)
         float clampedTargetX = Mathf.Clamp(targetX, minX, maxX);
         float distToTarget = clampedTargetX - transform.position.x;
 
@@ -156,8 +137,6 @@ public class RusherEnemy : MonoBehaviour
             float directionX = Mathf.Sign(distToTarget);
             rb.linearVelocity = new Vector2(directionX * currentSpeed, 0); 
         }
-
-        // Waypoint Logic
         if (!isAggro && patrolPoints.Length > 0)
         {
             if (Mathf.Abs(transform.position.x - targetX) < waypointTolerance)
@@ -169,7 +148,6 @@ public class RusherEnemy : MonoBehaviour
 
     void OnCollisionEnter2D(Collision2D collision)
     {
-        // Enemy Bump
         if (collision.gameObject.CompareTag("Enemy"))
         {
             if (patrolPoints.Length > 0)
@@ -179,17 +157,11 @@ public class RusherEnemy : MonoBehaviour
             stunTimer = 0.2f;
         }
         
-        // Player Combat
         if (collision.gameObject.CompareTag("Player"))
         {
-            // A. Deal Damage
             HealthSystem playerHealth = collision.gameObject.GetComponent<HealthSystem>();
             if (playerHealth != null) playerHealth.TakeDamage(damage);
-
-            // B. Calculate Direction
             Vector2 pushDir = (collision.transform.position - transform.position).normalized;
-
-            // C. Apply Knockback
             KnockbackReceiver receiver = collision.gameObject.GetComponent<KnockbackReceiver>();
             if (receiver != null)
             {
@@ -204,8 +176,6 @@ public class RusherEnemy : MonoBehaviour
                     playerRb.AddForce(pushDir * knockbackForceOnPlayer, ForceMode2D.Impulse);
                 }
             }
-
-            // D. Self Knockback
             rb.linearVelocity = Vector2.zero; 
             rb.AddForce(-pushDir * knockbackForceOnSelf, ForceMode2D.Impulse);
             stunTimer = impactStunDuration;
@@ -224,15 +194,12 @@ public class RusherEnemy : MonoBehaviour
 
     void OnDrawGizmosSelected()
     {
-        // Draw movement bounds
         Gizmos.color = Color.green;
         Vector3 start = new Vector3(minX, transform.position.y, 0);
         Vector3 end = new Vector3(maxX, transform.position.y, 0);
         Gizmos.DrawLine(start + Vector3.up, start + Vector3.down);
         Gizmos.DrawLine(end + Vector3.up, end + Vector3.down);   
         Gizmos.DrawLine(start, end);
-        
-        // Draw detection range
         Gizmos.color = isAggro ? Color.red : Color.cyan;
         Gizmos.DrawWireCube(transform.position, new Vector3(detectionRange * 2, verticalDetectionRange * 2, 0));
     }

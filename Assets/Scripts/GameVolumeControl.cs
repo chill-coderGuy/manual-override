@@ -17,18 +17,15 @@ public class GameVolumeControl : MonoBehaviour
     public float handleVisualOffset = 0.0f; 
 
     [Header("Collision Check")]
-    public LayerMask wallLayer;    // Set this to "Ground" or "Walls"
-    
-    // Internal State
+    public LayerMask wallLayer;   
     private bool isDragging = false;
     private bool isResizing = false;
     private Rigidbody2D rb;
     private BoxCollider2D barCollider; 
     private SpriteRenderer barSprite;
 
-    // Movement Variables
     private Vector3 dragOffset;       
-    private Vector3 lastValidPosition; // Where we started dragging from
+    private Vector3 lastValidPosition; 
     private float initialMouseY;       
     private float initialHeight;       
     private float currentHeight = 1.0f;
@@ -39,7 +36,6 @@ public class GameVolumeControl : MonoBehaviour
         isResizing = false;
 
         rb = GetComponent<Rigidbody2D>();
-        // Ensure Rigidbody is Kinematic so gravity/forces don't mess it up
         if (rb != null)
         {
             rb.bodyType = RigidbodyType2D.Dynamic; 
@@ -77,14 +73,11 @@ public class GameVolumeControl : MonoBehaviour
 
     void Update()
     {
-        // Lock Z Axis
         if (transform.position.z != 0) 
             transform.position = new Vector3(transform.position.x, transform.position.y, 0);
 
         Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         mousePos.z = 0;
-
-        // --- INPUT HANDLING ---
         if (Input.GetMouseButtonDown(0))
         {
             RaycastHit2D[] hits = Physics2D.RaycastAll(mousePos, Vector2.zero);
@@ -107,8 +100,6 @@ public class GameVolumeControl : MonoBehaviour
             {
                 isDragging = true;
                 dragOffset = transform.position - mousePos;
-                
-                // 1. SAVE START POSITION
                 lastValidPosition = transform.position; 
             }
         }
@@ -117,34 +108,25 @@ public class GameVolumeControl : MonoBehaviour
         {
             if (isDragging)
             {
-                // 2. CHECK WALL COLLISION ON DROP
                 if (barCollider != null && barCollider.IsTouchingLayers(wallLayer))
                 {
-                    // BAD DROP: Inside a wall -> Snap Back
                     Debug.Log("🚫 Inside Wall! Snapping back.");
                     transform.position = lastValidPosition; 
                 }
                 else
                 {
-                    // GOOD DROP: Check for Inventory Switch
                     if (transform.position.y < gameThresholdY) 
                     {
                         SwapToInventoryMode();
                     }
-                    // If good drop but not inventory, we just stay here.
                 }
             }
 
             isDragging = false;
             isResizing = false;
         }
-
-        // --- EXECUTION ---
         if (isDragging)
         {
-            // MOVEMENT: Follow mouse directly (No physics forces)
-            // We use MovePosition in Update for instant response, 
-            // since we are Kinematic it won't jitter.
             if (rb != null)
             {
                 rb.MovePosition(mousePos + dragOffset);
@@ -163,13 +145,11 @@ public class GameVolumeControl : MonoBehaviour
 
             currentHeight = Mathf.Clamp(newH, minHeight, maxHeight);
             UpdateVisuals(currentHeight);
-            ApplyAudioEffects(currentHeight);
+            ApplyAudio(currentHeight);
         }
     }
 
-    // --- HELPERS ---
-
-    void UpdateVisuals(float h)
+      void UpdateVisuals(float h)
     {
         if (siblingBar == null || siblingHandle == null) return;
 
@@ -186,7 +166,6 @@ public class GameVolumeControl : MonoBehaviour
 
         Physics2D.SyncTransforms(); 
 
-        // Handle Position
         float topY = 0f;
         if(barCollider != null) topY = barCollider.bounds.max.y;
         else topY = siblingBar.position.y + h; 
@@ -194,13 +173,13 @@ public class GameVolumeControl : MonoBehaviour
         siblingHandle.position = new Vector3(siblingBar.position.x, topY + handleVisualOffset, 0);
     }
 
-    void ApplyAudioEffects(float h)
+   void ApplyAudio(float h)
+{
+    if (GlobalSoundManager.Instance != null)
     {
-        if (masterMixer == null) return;
-        float t = Mathf.InverseLerp(minHeight, maxHeight, h);
-        masterMixer.SetFloat("MusicPitch", Mathf.Lerp(0.6f, 1.0f, t));
-        masterMixer.SetFloat("MusicVol", Mathf.Lerp(-40f, 0f, t));
+        GlobalSoundManager.Instance.SetVolumeFromLength(h, minHeight, maxHeight);
     }
+}
 
     void SwapToInventoryMode()
     {

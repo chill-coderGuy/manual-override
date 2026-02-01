@@ -1,30 +1,51 @@
 using UnityEngine;
+using UnityEngine.SceneManagement; 
 
 public class PlayerController : MonoBehaviour
 {
-    // 1. Declare these at the VERY TOP of the class
+    [Header("Movement Settings")]
     public float moveSpeed = 8f;
     public float jumpForce = 12f;
     public float gravityScale = 3f;
     public LayerMask groundLayer;
 
+    [Header("Level Completion")]
+    public float finishXPosition = 100f; 
+    public string successSceneName = "LevelComplete"; 
+
     private Rigidbody2D rb;
-    private BoxCollider2D boxCollider; // <--- This was missing!
+    private BoxCollider2D boxCollider;
+    private bool isLevelComplete = false;
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
-        boxCollider = GetComponent<BoxCollider2D>(); // <--- This assigns it
+        boxCollider = GetComponent<BoxCollider2D>();
+        
+      
+        Time.timeScale = 1f; 
     }
 
     void Update()
     {
+       
+        if (isLevelComplete) return;
+
+        
+        if (transform.position.x >= finishXPosition)
+        {
+            CompleteLevel();
+            return;
+        }
+
+      
         float horizontal = Input.GetAxisRaw("Horizontal");
         rb.gravityScale = gravityScale;
 
-        // The jump logic
-        bool jumpPressed =  Input.GetKeyDown(KeyCode.W) || 
-                            Input.GetKeyDown(KeyCode.UpArrow);
+        bool jumpPressed = Input.GetKeyDown(KeyCode.W) || 
+                           Input.GetKeyDown(KeyCode.UpArrow) || 
+                           Input.GetKeyDown(KeyCode.Space);
+
         if (jumpPressed && IsGrounded())
         {
             rb.linearVelocity = new Vector2(rb.linearVelocity.x, jumpForce);
@@ -33,11 +54,16 @@ public class PlayerController : MonoBehaviour
         rb.linearVelocity = new Vector2(horizontal * moveSpeed, rb.linearVelocity.y);
     }
 
+    void CompleteLevel()
+    {
+        isLevelComplete = true;
+        Debug.Log("🏁 Level Complete! Loading Success Scene...");
+        SceneManager.LoadScene(successSceneName);
+    }
+
     public bool IsGrounded()
     {
         float extraHeight = 0.1f;
-        
-        // This 'BoxCast' ensures you can jump even if only a sliver of the player is on a cliff
         RaycastHit2D raycastHit = Physics2D.BoxCast(
             boxCollider.bounds.center, 
             boxCollider.bounds.size, 
@@ -48,5 +74,11 @@ public class PlayerController : MonoBehaviour
         );
 
         return raycastHit.collider != null;
+    }
+
+    void OnDrawGizmos()
+    {
+        Gizmos.color = Color.green;
+        Gizmos.DrawLine(new Vector3(finishXPosition, -10, 0), new Vector3(finishXPosition, 10, 0));
     }
 }
