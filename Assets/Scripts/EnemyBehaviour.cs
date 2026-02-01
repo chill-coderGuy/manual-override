@@ -38,14 +38,51 @@ public class RusherEnemy : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         
-        // 1. Lock Y Axis & Remove Gravity (AI Fix)
+        // 1. Lock Y Axis & Remove Gravity
         rb.gravityScale = 0f; 
         rb.constraints = RigidbodyConstraints2D.FreezePositionY | RigidbodyConstraints2D.FreezeRotation;
         
-        GameObject p = GameObject.FindGameObjectWithTag("Player");
-        if (p != null) playerTransform = p.transform;
+        // --- IMPROVED: AUTO-FIND SPRITE RENDERER ---
+        if (spriteRenderer == null) 
+        {
+            // First try to find on this object
+            spriteRenderer = GetComponent<SpriteRenderer>();
+            
+            // If not found, try children
+            if (spriteRenderer == null)
+            {
+                spriteRenderer = GetComponentInChildren<SpriteRenderer>();
+            }
+            
+            // Debug to see if we found it
+            if (spriteRenderer != null)
+            {
+                Debug.Log($"[{gameObject.name}] Found SpriteRenderer on: {spriteRenderer.gameObject.name}");
+            }
+            else
+            {
+                Debug.LogWarning($"[{gameObject.name}] No SpriteRenderer found! Color changes won't work.");
+            }
+        }
+        // --------------------------------------
 
-        if (spriteRenderer != null) spriteRenderer.color = patrolColor;
+        GameObject p = GameObject.FindGameObjectWithTag("Player");
+        if (p != null) 
+        {
+            playerTransform = p.transform;
+            Debug.Log($"[{gameObject.name}] Found player: {p.name}");
+        }
+        else
+        {
+            Debug.LogWarning($"[{gameObject.name}] Player not found! Make sure player has 'Player' tag.");
+        }
+
+        // Set initial color
+        if (spriteRenderer != null) 
+        {
+            spriteRenderer.color = patrolColor;
+            Debug.Log($"[{gameObject.name}] Set initial color to patrol color");
+        }
     }
 
     void Update()
@@ -65,9 +102,18 @@ public class RusherEnemy : MonoBehaviour
         bool wasAggro = isAggro;
         isAggro = (distToPlayer < detectionRange && yDiff < verticalDetectionRange);
 
-        if (isAggro != wasAggro && spriteRenderer != null)
+        // Update color when aggro state changes
+        if (isAggro != wasAggro)
         {
-            spriteRenderer.color = isAggro ? aggroColor : patrolColor;
+            if (spriteRenderer != null)
+            {
+                spriteRenderer.color = isAggro ? aggroColor : patrolColor;
+                Debug.Log($"[{gameObject.name}] Aggro changed: {isAggro} - Color set to {(isAggro ? "RED" : "WHITE")}");
+            }
+            else
+            {
+                Debug.LogWarning($"[{gameObject.name}] Can't change color - spriteRenderer is null!");
+            }
         }
     }
 
@@ -121,7 +167,6 @@ public class RusherEnemy : MonoBehaviour
         }
     }
 
-    // --- COLLISION LOGIC (Reverted to YOUR Original Version) ---
     void OnCollisionEnter2D(Collision2D collision)
     {
         // Enemy Bump
@@ -132,7 +177,6 @@ public class RusherEnemy : MonoBehaviour
                 currentWaypointIndex = (currentWaypointIndex + 1) % patrolPoints.Length;
             }
             stunTimer = 0.2f;
-            FlipSprite();
         }
         
         // Player Combat
@@ -142,11 +186,10 @@ public class RusherEnemy : MonoBehaviour
             HealthSystem playerHealth = collision.gameObject.GetComponent<HealthSystem>();
             if (playerHealth != null) playerHealth.TakeDamage(damage);
 
-            // B. Calculate Direction (Standard)
+            // B. Calculate Direction
             Vector2 pushDir = (collision.transform.position - transform.position).normalized;
 
-            // C. Apply Knockback (Your Original Logic)
-            // We check for the Receiver first, otherwise use raw force
+            // C. Apply Knockback
             KnockbackReceiver receiver = collision.gameObject.GetComponent<KnockbackReceiver>();
             if (receiver != null)
             {
@@ -154,11 +197,10 @@ public class RusherEnemy : MonoBehaviour
             }
             else
             {
-                // Fallback: This is what likely worked for you before
                 Rigidbody2D playerRb = collision.gameObject.GetComponent<Rigidbody2D>();
                 if (playerRb != null)
                 {
-                    playerRb.linearVelocity = Vector2.zero; // Reset momentum
+                    playerRb.linearVelocity = Vector2.zero;
                     playerRb.AddForce(pushDir * knockbackForceOnPlayer, ForceMode2D.Impulse);
                 }
             }
@@ -172,13 +214,17 @@ public class RusherEnemy : MonoBehaviour
     
     void FlipSprite()
     {
-        Vector3 scaler = transform.localScale;
-        scaler.x *= -1;
-        transform.localScale = scaler;
+        if (spriteRenderer != null)
+        {
+            Vector3 scaler = spriteRenderer.transform.localScale;
+            scaler.x *= -1;
+            spriteRenderer.transform.localScale = scaler;
+        }
     }
 
     void OnDrawGizmosSelected()
     {
+        // Draw movement bounds
         Gizmos.color = Color.green;
         Vector3 start = new Vector3(minX, transform.position.y, 0);
         Vector3 end = new Vector3(maxX, transform.position.y, 0);
@@ -186,7 +232,8 @@ public class RusherEnemy : MonoBehaviour
         Gizmos.DrawLine(end + Vector3.up, end + Vector3.down);   
         Gizmos.DrawLine(start, end);
         
-        Gizmos.color = Color.cyan;
+        // Draw detection range
+        Gizmos.color = isAggro ? Color.red : Color.cyan;
         Gizmos.DrawWireCube(transform.position, new Vector3(detectionRange * 2, verticalDetectionRange * 2, 0));
     }
 }

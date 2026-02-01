@@ -181,7 +181,7 @@ public class GameVolumeControl : MonoBehaviour
         }
         else
         {
-            siblingBar.localScale = new Vector3(0.33f, h, 1f);
+            siblingBar.localScale = new Vector3(0.5f, h, 1f);
         }
 
         Physics2D.SyncTransforms(); 
